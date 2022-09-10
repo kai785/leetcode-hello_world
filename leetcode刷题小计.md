@@ -2,7 +2,7 @@
 
 ==函数括号记得另起一行==
 
-## 滑动窗口（我是撒比）
+## 滑动窗口
 
 > 万能模板请：
 
@@ -627,5 +627,192 @@ void ticTacToeFree(TicTacToe* obj) {
 }
 ```
 
+[#1912 设计电影租借系统](https://leetcode.cn/problems/design-movie-rental-system/)
 
+```C
+#define MAX_ANS 5
+
+typedef struct {
+    int shop;
+    int movie;
+} MovieKey; //准备hash解的，先数组试试
+
+typedef struct {
+    MovieKey key;
+    int price;
+    bool isRent;
+} Movies;
+
+typedef struct {
+    int movieNum;
+    Movies *mvs; // 所有输入的列表，按mv和shop升序，参考cmpMvs
+    Movies **srchList; // 用于Searh接口的排序表，参考cmpSrch
+    Movies **rptList;  // 用于Report接口的排序表，参考cmpRpt
+} MovieRentingSystem;
+
+MovieRentingSystem g_sys = { 0 };
+
+int cmpSrch(const void *a, const void *b)
+{
+    Movies **ma = (Movies **)a;
+    Movies **mb = (Movies **)b;
+
+    if (ma[0]->key.movie != mb[0]->key.movie)
+        return ma[0]->key.movie - mb[0]->key.movie;
+    if (ma[0]->price != mb[0]->price)
+        return ma[0]->price - mb[0]->price;
+    return ma[0]->key.shop - mb[0]->key.shop;
+}
+
+int cmpRpt(const void *a, const void *b)
+{
+    Movies **ma = (Movies **)a;
+    Movies **mb = (Movies **)b;
+
+    if (ma[0]->price != mb[0]->price)
+        return ma[0]->price - mb[0]->price;           
+    if (ma[0]->key.shop != mb[0]->key.shop)
+        return ma[0]->key.shop - mb[0]->key.shop;
+    return ma[0]->key.movie - mb[0]->key.movie;
+}
+
+int cmpMvs(const void *a, const void *b)
+{
+    Movies *ma = (Movies *)a;
+    Movies *mb = (Movies *)b;
+
+    if (ma->key.movie != mb->key.movie) {
+        return ma->key.movie - mb->key.movie;
+    }
+
+    return ma->key.shop - mb->key.shop;
+}
+
+MovieRentingSystem *movieRentingSystemCreate(int n, int **entries, int entriesSize, int *entriesColSize)
+{
+    g_sys.movieNum = entriesSize;
+
+    g_sys.mvs = (Movies *)malloc(entriesSize * sizeof(Movies));
+    g_sys.srchList = (Movies **)malloc(entriesSize * sizeof(Movies *));
+    g_sys.rptList = (Movies **)malloc(entriesSize * sizeof(Movies *));
+
+    for (int i = 0; i < entriesSize; i++) {
+        g_sys.mvs[i].isRent = false;
+        g_sys.mvs[i].key.shop = entries[i][0];
+        g_sys.mvs[i].key.movie = entries[i][1];
+        g_sys.mvs[i].price = entries[i][2];
+
+        g_sys.srchList[i] = &g_sys.mvs[i];
+        g_sys.rptList[i] = &g_sys.mvs[i];        
+    }
+
+    qsort(g_sys.mvs, g_sys.movieNum, sizeof(Movies), cmpMvs);
+    qsort(g_sys.srchList, g_sys.movieNum, sizeof(Movies *), cmpSrch);
+    qsort(g_sys.rptList, g_sys.movieNum, sizeof(Movies *), cmpRpt);    
+
+    return &g_sys;
+}
+
+// 是找到最左的边界
+int BinSearch(MovieRentingSystem *obj, int movie)
+{
+    int mid;
+    int min = 0;
+    int max = obj->movieNum - 1;
+
+    while(min <= max){
+        mid = min + ( max - min ) / 2;
+        if (obj->srchList[mid]->key.movie < movie) {
+            min = mid + 1;
+        } else if (obj->srchList[mid]->key.movie > movie){
+            max = mid - 1;
+        } else if(obj->srchList[mid]->key.movie == movie){
+            max = mid - 1; // 继续找左边界
+        }
+    }
+
+    if (min >= obj->movieNum || obj->srchList[min]->key.movie != movie) {
+        return -1;
+    }
+
+    return min;
+}
+
+int *movieRentingSystemSearch(MovieRentingSystem *obj, int movie, int *retSize)
+{
+    int count = 0;
+    int *ans = (int *)malloc(MAX_ANS * sizeof(int));
+
+    int i = BinSearch(obj, movie);
+    if (i == -1) {
+        *retSize = 0;
+        return NULL;
+    }
+    // 已经按要求排序
+    for (; i < obj->movieNum; i++) {
+        if (obj->srchList[i]->key.movie == movie && obj->srchList[i]->isRent == false) {
+            ans[count++] = obj->srchList[i]->key.shop;
+        }
+        if (count >= MAX_ANS || obj->srchList[i]->key.movie > movie) {
+            break;
+        }
+    }
+
+    *retSize = count;
+    return ans;
+}
+
+
+void setMovies(MovieRentingSystem *obj, int shop, int movie, bool isRent) {
+    Movies want = {0};
+    want.key.shop = shop;
+    want.key.movie = movie;
+
+    Movies *find = bsearch(&want, obj->mvs, obj->movieNum, sizeof(Movies), cmpMvs);
+
+    find->isRent = isRent;
+}
+
+void movieRentingSystemRent(MovieRentingSystem *obj, int shop, int movie)
+{
+    setMovies(obj, shop, movie, true);
+}
+
+void movieRentingSystemDrop(MovieRentingSystem *obj, int shop, int movie)
+{
+    setMovies(obj, shop, movie, false);
+}
+
+int **movieRentingSystemReport(MovieRentingSystem *obj, int *retSize, int **retColSize)
+{
+    int count = 0;
+    int **ans = (int **)malloc(MAX_ANS * sizeof(int *));
+    // 已经按要求排序
+    for (int i = 0; i < obj->movieNum; i++) {
+        if (obj->rptList[i]->isRent == true) {
+            ans[count] = (int *)malloc(2 * sizeof(int));
+            ans[count][0] = obj->rptList[i]->key.shop;
+            ans[count][1] = obj->rptList[i]->key.movie;
+            count++;
+        }
+        if (count >= MAX_ANS) {
+            break;
+        }
+    }
+
+    *retSize = count;
+    *retColSize = (int *)malloc(sizeof(int) * count);
+    for (int i = 0; i < count; i++) {
+        (*retColSize)[i] = 2;
+    }
+
+    return ans;
+}
+
+void movieRentingSystemFree(MovieRentingSystem *obj) {
+    free(obj->mvs);
+    free(obj->rptList);
+    free(obj->srchList);
+}
+```
 
